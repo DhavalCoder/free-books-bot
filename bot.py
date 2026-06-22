@@ -59,7 +59,7 @@ def ask_openrouter(history: list) -> str:
             "Content-Type": "application/json",
         },
         json={
-            "model": "deepseek/deepseek-r1:free",
+            "model": "deepseek/deepseek-r1-0528:free",
             "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + history,
         },
         timeout=60,
