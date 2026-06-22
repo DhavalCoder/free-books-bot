@@ -26,7 +26,7 @@ sessions: dict[int, list] = {}
 BANNER = """```
 ╔══════════════════════════════════════╗
 ║         AI TERMINAL v1.0             ║
-║  Powered by DeepSeek • DhavalCoder   ║
+║  Powered by Llama 3.3 • DhavalCoder  ║
 ╚══════════════════════════════════════╝
 > Ready. Ask me anything about AI.
 > Commands: /start  /clear  /help
@@ -59,7 +59,7 @@ def ask_openrouter(history: list) -> str:
             "Content-Type": "application/json",
         },
         json={
-            "model": "deepseek/deepseek-r1-0528:free",
+            "model": "meta-llama/llama-3.3-70b-instruct:free",
             "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + history,
         },
         timeout=60,
