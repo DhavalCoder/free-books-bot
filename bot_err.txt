@@ -1,0 +1,150 @@
+Traceback (most recent call last):
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpx\_transports\default.py"[0m, line [35m101[0m, in [35mmap_httpcore_exceptions[0m
+    yield
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpx\_transports\default.py"[0m, line [35m394[0m, in [35mhandle_async_request[0m
+    resp = [1;31mawait self._pool.handle_async_request(req)[0m
+           [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpcore\_async\connection_pool.py"[0m, line [35m256[0m, in [35mhandle_async_request[0m
+    raise exc from None
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpcore\_async\connection_pool.py"[0m, line [35m236[0m, in [35mhandle_async_request[0m
+    response = [1;31mawait connection.handle_async_request([0m
+               [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+        [1;31mpool_request.request[0m
+        [1;31m^^^^^^^^^^^^^^^^^^^^[0m
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpcore\_async\connection.py"[0m, line [35m101[0m, in [35mhandle_async_request[0m
+    raise exc
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpcore\_async\connection.py"[0m, line [35m78[0m, in [35mhandle_async_request[0m
+    stream = [1;31mawait self._connect(request)[0m
+             [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpcore\_async\connection.py"[0m, line [35m124[0m, in [35m_connect[0m
+    stream = [1;31mawait self._network_backend.connect_tcp(**kwargs)[0m
+             [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpcore\_backends\auto.py"[0m, line [35m31[0m, in [35mconnect_tcp[0m
+    return [1;31mawait self._backend.connect_tcp([0m
+           [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    ...<5 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpcore\_backends\anyio.py"[0m, line [35m113[0m, in [35mconnect_tcp[0m
+    with [31mmap_exceptions[0m[1;31m(exc_map)[0m:
+         [31m~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\contextlib.py"[0m, line [35m162[0m, in [35m__exit__[0m
+    [31mself.gen.throw[0m[1;31m(value)[0m
+    [31m~~~~~~~~~~~~~~[0m[1;31m^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpcore\_exceptions.py"[0m, line [35m14[0m, in [35mmap_exceptions[0m
+    raise to_exc(exc) from exc
+[1;35mhttpcore.ConnectTimeout[0m
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\request\_httpxrequest.py"[0m, line [35m293[0m, in [35mdo_request[0m
+    res = [1;31mawait self._client.request([0m
+          [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    ...<6 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpx\_client.py"[0m, line [35m1540[0m, in [35mrequest[0m
+    return [1;31mawait self.send(request, auth=auth, follow_redirects=follow_redirects)[0m
+           [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpx\_client.py"[0m, line [35m1629[0m, in [35msend[0m
+    response = [1;31mawait self._send_handling_auth([0m
+               [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    ...<4 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpx\_client.py"[0m, line [35m1657[0m, in [35m_send_handling_auth[0m
+    response = [1;31mawait self._send_handling_redirects([0m
+               [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    ...<3 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpx\_client.py"[0m, line [35m1694[0m, in [35m_send_handling_redirects[0m
+    response = [1;31mawait self._send_single_request(request)[0m
+               [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpx\_client.py"[0m, line [35m1730[0m, in [35m_send_single_request[0m
+    response = [1;31mawait transport.handle_async_request(request)[0m
+               [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpx\_transports\default.py"[0m, line [35m393[0m, in [35mhandle_async_request[0m
+    with [31mmap_httpcore_exceptions[0m[1;31m()[0m:
+         [31m~~~~~~~~~~~~~~~~~~~~~~~[0m[1;31m^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\contextlib.py"[0m, line [35m162[0m, in [35m__exit__[0m
+    [31mself.gen.throw[0m[1;31m(value)[0m
+    [31m~~~~~~~~~~~~~~[0m[1;31m^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\httpx\_transports\default.py"[0m, line [35m118[0m, in [35mmap_httpcore_exceptions[0m
+    raise mapped_exc(message) from exc
+[1;35mhttpx.ConnectTimeout[0m
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File [35m"C:\Users\admin\free-books-bot\bot.py"[0m, line [35m124[0m, in [35m<module>[0m
+    [31masyncio.run[0m[1;31m(run())[0m
+    [31m~~~~~~~~~~~[0m[1;31m^^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\runners.py"[0m, line [35m204[0m, in [35mrun[0m
+    return [31mrunner.run[0m[1;31m(main)[0m
+           [31m~~~~~~~~~~[0m[1;31m^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\runners.py"[0m, line [35m127[0m, in [35mrun[0m
+    return [31mself._loop.run_until_complete[0m[1;31m(task)[0m
+           [31m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py"[0m, line [35m719[0m, in [35mrun_until_complete[0m
+    return [31mfuture.result[0m[1;31m()[0m
+           [31m~~~~~~~~~~~~~[0m[1;31m^^[0m
+  File [35m"C:\Users\admin\free-books-bot\bot.py"[0m, line [35m108[0m, in [35mrun[0m
+    async with [1;31mapp[0m:
+               [1;31m^^^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\ext\_application.py"[0m, line [35m370[0m, in [35m__aenter__[0m
+    await self.initialize()
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\ext\_application.py"[0m, line [35m487[0m, in [35minitialize[0m
+    await self.bot.initialize()
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\ext\_extbot.py"[0m, line [35m300[0m, in [35minitialize[0m
+    await super().initialize()
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\_bot.py"[0m, line [35m763[0m, in [35minitialize[0m
+    await self.get_me()
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\ext\_extbot.py"[0m, line [35m1957[0m, in [35mget_me[0m
+    return [1;31mawait super().get_me([0m
+           [1;31m^^^^^^^^^^^^^^^^^^^^^[0m
+    ...<5 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\_bot.py"[0m, line [35m895[0m, in [35mget_me[0m
+    result = [1;31mawait self._post([0m
+             [1;31m^^^^^^^^^^^^^^^^^[0m
+    ...<6 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\_bot.py"[0m, line [35m619[0m, in [35m_post[0m
+    return [1;31mawait self._do_post([0m
+           [1;31m^^^^^^^^^^^^^^^^^^^^[0m
+    ...<6 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\ext\_extbot.py"[0m, line [35m354[0m, in [35m_do_post[0m
+    return [1;31mawait super()._do_post([0m
+           [1;31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+    ...<6 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\_bot.py"[0m, line [35m648[0m, in [35m_do_post[0m
+    result = [1;31mawait request.post([0m
+             [1;31m^^^^^^^^^^^^^^^^^^^[0m
+    ...<6 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\request\_baserequest.py"[0m, line [35m202[0m, in [35mpost[0m
+    result = [1;31mawait self._request_wrapper([0m
+             [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    ...<7 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\request\_baserequest.py"[0m, line [35m334[0m, in [35m_request_wrapper[0m
+    code, payload = [1;31mawait self.do_request([0m
+                    [1;31m^^^^^^^^^^^^^^^^^^^^^^[0m
+    ...<7 lines>...
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"C:\Users\admin\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\telegram\request\_httpxrequest.py"[0m, line [35m310[0m, in [35mdo_request[0m
+    raise TimedOut from err
+[1;35mtelegram.error.TimedOut[0m: [35mTimed out[0m
