@@ -1,125 +1,115 @@
 import os
-import requests
+import google.generativeai as genai
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
-GITHUB_SEARCH_URL = "https://api.github.com/search/code"
-OPEN_LIBRARY_URL = "https://openlibrary.org/search.json"
+genai.configure(api_key=GEMINI_KEY)
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    system_instruction=(
+        "You are an expert AI assistant specialized exclusively in Artificial Intelligence, "
+        "Machine Learning, Deep Learning, LLMs, Agents, RAG, MCP, Vector Databases, Prompt Engineering, "
+        "MLOps, and all related AI/ML topics.\n\n"
+        "Rules:\n"
+        "- Only answer AI-related questions. For anything else, say: "
+        "'⚠ This terminal only handles AI queries. Ask me about AI, LLMs, agents, RAG, MCP, etc.'\n"
+        "- Always structure responses clearly with sections, bullet points, and code examples where relevant.\n"
+        "- Be concise but thorough. Think like a senior AI engineer explaining to a fellow developer."
+    )
+)
 
-TOPICS = [
-    ["🐍 Python", "☕ Java", "🌐 JavaScript"],
-    ["🤖 AI / Machine Learning", "📊 Data Science", "🧠 Deep Learning"],
-    ["☁️ Cloud / AWS", "🐳 Docker / DevOps", "🔐 Cybersecurity"],
-    ["⚛️ React", "🖥️ Linux", "🗄️ Databases"],
-    ["📱 Flutter / Mobile", "🦀 Rust", "🐹 Go"],
-    ["🧮 Algorithms", "🏗️ System Design", "🔧 C / C++"],
-]
+# Store chat sessions per user
+sessions: dict[int, genai.ChatSession] = {}
 
+BANNER = """```
+╔══════════════════════════════════════╗
+║         AI TERMINAL v1.0             ║
+║   Powered by Gemini • by DhavalCoder ║
+╚══════════════════════════════════════╝
+Type any AI question to get started.
+Commands: /start /clear /help
+```"""
 
-def topic_keyboard():
-    keyboard = []
-    for row in TOPICS:
-        keyboard.append([
-            InlineKeyboardButton(t, callback_data=t.split(" ", 1)[1])
-            for t in row
-        ])
-    keyboard.append([InlineKeyboardButton("🔍 Search Custom Topic", callback_data="__custom__")])
-    return InlineKeyboardMarkup(keyboard)
-
-
-def search_books(query: str) -> str:
-    gh, ol = [], []
-
-    try:
-        r = requests.get(GITHUB_SEARCH_URL,
-                         params={"q": f"{query} repo:EbookFoundation/free-programming-books", "per_page": 5},
-                         headers={"Accept": "application/vnd.github+json"}, timeout=8)
-        gh = [{"title": i["name"].replace(".md", ""), "url": i["html_url"]}
-              for i in r.json().get("items", [])[:5]]
-    except Exception:
-        pass
-
-    try:
-        r = requests.get(OPEN_LIBRARY_URL,
-                         params={"q": query, "fields": "title,author_name,ia,has_fulltext", "limit": 5},
-                         timeout=8)
-        for doc in r.json().get("docs", []):
-            if doc.get("has_fulltext") and doc.get("ia"):
-                ia_id = doc["ia"][0] if isinstance(doc["ia"], list) else doc["ia"]
-                ol.append({
-                    "title": doc.get("title", "Unknown"),
-                    "author": ", ".join(doc.get("author_name", ["Unknown"])),
-                    "url": f"https://archive.org/details/{ia_id}",
-                })
-    except Exception:
-        pass
-
-    if not gh and not ol:
-        return "😕 No results found. Try a different topic."
-
-    lines = [f"📖 *Free books for: {query}*\n"]
-    if gh:
-        lines.append("*From Free Programming Books (GitHub):*")
-        for b in gh:
-            lines.append(f"• [{b['title']}]({b['url']})")
-    if ol:
-        lines.append("\n*From Open Library / Internet Archive:*")
-        for b in ol:
-            lines.append(f"• [{b['title']}]({b['url']}) — _{b['author']}_")
-    lines.append("\n_All books are free and legal_ ✅")
-    return "\n".join(lines)
+HELP_TEXT = """```
+┌─────────────────────────────────────┐
+│           AVAILABLE COMMANDS        │
+├─────────────────────────────────────┤
+│ /start  → Boot terminal             │
+│ /clear  → Clear conversation memory │
+│ /help   → Show this help            │
+├─────────────────────────────────────┤
+│ TOPICS YOU CAN ASK ABOUT:           │
+│  • LLMs, GPT, Claude, Gemini        │
+│  • RAG, Vector DBs, Embeddings      │
+│  • AI Agents, MCP, LangChain        │
+│  • Prompt Engineering               │
+│  • Fine-tuning, LoRA, PEFT          │
+│  • MLOps, Deployment, Inference     │
+│  • Computer Vision, NLP             │
+│  • Reinforcement Learning           │
+└─────────────────────────────────────┘
+```"""
 
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    sessions[user_id] = model.start_chat(history=[])
+    await update.message.reply_text(BANNER, parse_mode="Markdown")
+
+
+async def clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    sessions[user_id] = model.start_chat(history=[])
     await update.message.reply_text(
-        "📚 *Free Programming Books Bot*\n\nChoose a topic or search for anything:",
-        parse_mode="Markdown",
-        reply_markup=topic_keyboard(),
+        "```\n> Memory cleared. New session started.\n```",
+        parse_mode="Markdown"
     )
 
 
-async def menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Choose a topic:",
-        reply_markup=topic_keyboard(),
-    )
+async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
 
 
-async def button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+async def chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_input = update.message.text.strip()
 
-    if query.data == "__custom__":
-        await query.message.reply_text("✏️ Type any topic or book name to search:")
-        return
+    if user_id not in sessions:
+        sessions[user_id] = model.start_chat(history=[])
 
-    await query.message.reply_text(f"🔍 Searching *{query.data}*...", parse_mode="Markdown")
-    result = search_books(query.data)
-    await query.message.reply_text(result, parse_mode="Markdown", disable_web_page_preview=True)
-    await query.message.reply_text("Choose another topic:", reply_markup=topic_keyboard())
+    # Show typing indicator
+    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
+    try:
+        response = sessions[user_id].send_message(user_input)
+        reply = response.text
 
-async def search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    query = update.message.text.strip()
-    if not query:
-        return
-    await update.message.reply_text(f"🔍 Searching *{query}*...", parse_mode="Markdown")
-    result = search_books(query)
-    await update.message.reply_text(result, parse_mode="Markdown", disable_web_page_preview=True)
-    await update.message.reply_text("Search another topic:", reply_markup=topic_keyboard())
+        # Terminal-style header
+        header = f"`> {user_input[:50]}{'...' if len(user_input) > 50 else ''}`\n\n"
+        await update.message.reply_text(
+            header + reply,
+            parse_mode="Markdown",
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"```\n[ERROR] {str(e)}\nTry /clear to reset session.\n```",
+            parse_mode="Markdown"
+        )
 
 
 if __name__ == "__main__":
-    if not TOKEN:
-        raise ValueError("BOT_TOKEN not set")
-    app = ApplicationBuilder().token(TOKEN).build()
+    if not BOT_TOKEN or not GEMINI_KEY:
+        raise ValueError("BOT_TOKEN or GEMINI_API_KEY not set in .env")
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("menu", menu))
-    app.add_handler(CallbackQueryHandler(button))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
-    print("Bot is running...")
+    app.add_handler(CommandHandler("clear", clear))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+    print("AI Terminal Bot running...")
     app.run_polling()
