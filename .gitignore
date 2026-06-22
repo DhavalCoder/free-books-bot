@@ -1,0 +1,6 @@
+.env
+*.txt.bak
+bot_out.txt
+bot_err.txt
+__pycache__/
+*.pyc
