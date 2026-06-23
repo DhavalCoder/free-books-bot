@@ -51,21 +51,39 @@ HELP_TEXT = """```
 ```"""
 
 
+FREE_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "google/gemma-4-31b-it:free",
+    "nousresearch/hermes-3-llama-3.1-405b:free",
+    "qwen/qwen3-coder:free",
+]
+
+
 def ask_openrouter(history: list) -> str:
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENROUTER_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "meta-llama/llama-3.3-70b-instruct:free",
-            "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + history,
-        },
-        timeout=60,
-    )
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    last_err = None
+    for model in FREE_MODELS:
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + history,
+                },
+                timeout=60,
+            )
+            if response.status_code == 429:
+                last_err = f"Rate limited on {model}"
+                continue
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            last_err = str(e)
+            continue
+    raise Exception(f"All models rate limited. Try again in a minute. ({last_err})")
 
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
