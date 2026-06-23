@@ -161,18 +161,18 @@ async def notes(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await send(update, f"📝 *Notes: {topic}* — generating...")
 
     sections = [
-        ("📖 Definition", f"Give a clear, concise definition of {topic} in 3-5 sentences."),
-        ("⚙️ How It Works", f"Explain step by step how {topic} works technically."),
-        ("💡 Key Concepts", f"List the 5-7 most important concepts/components of {topic} with brief explanations."),
-        ("🛠 Use Cases", f"List 5 real-world use cases of {topic} with examples."),
-        ("💻 Code Example", f"Show a practical code example demonstrating {topic}. Use Python."),
-        ("✅ Summary", f"Give a 3-point summary of {topic} — what it is, why it matters, when to use it."),
+        ("📖 1/6 — Definition", f"Define '{topic}' in 3-5 sentences only."),
+        ("⚙️ 2/6 — How It Works", f"Explain step by step how '{topic}' works technically. Be concise."),
+        ("💡 3/6 — Key Concepts", f"List 5-7 key concepts of '{topic}' with one-line explanations each."),
+        ("🛠 4/6 — Use Cases", f"List 5 real-world use cases of '{topic}' with brief examples."),
+        ("💻 5/6 — Code Example", f"Show one practical Python code example for '{topic}' with short comments."),
+        ("✅ 6/6 — Summary", f"3 bullet points only: what '{topic}' is, why it matters, when to use it."),
     ]
 
     for title, prompt in sections:
         await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-        reply = ai(f"Topic: {topic}\nTask: {prompt}\nBe concise and clear.")
-        await send(update, f"{title}\n\n{reply}")
+        reply = ai(prompt)
+        await send(update, f"*{title}*\n\n{reply}")
 
     await send(update, f"✅ *Notes complete for {topic}!*")
 
