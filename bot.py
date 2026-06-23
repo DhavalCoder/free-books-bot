@@ -13,11 +13,10 @@ SYSTEM_PROMPT = (
     "Machine Learning, Deep Learning, LLMs, Agents, RAG, MCP, Vector Databases, Prompt Engineering, "
     "MLOps, and all related AI/ML topics.\n\n"
     "Rules:\n"
-    "- Only answer AI-related questions. For anything else, reply: "
-    "'⚠ This terminal only handles AI queries. Ask me about AI, LLMs, agents, RAG, MCP, etc.'\n"
+    "- Only answer AI-related questions. For anything else say: "
+    "'⚠ This terminal only handles AI queries.'\n"
     "- Structure responses clearly with sections and bullet points.\n"
-    "- Include code examples where relevant.\n"
-    "- Be concise but thorough."
+    "- Include code examples where relevant."
 )
 
 sessions: dict[int, list] = {}
@@ -35,15 +34,15 @@ COMMANDS_TEXT = """```
 ┌─────────────────────────────────────┐
 │           ALL COMMANDS              │
 ├─────────────────────────────────────┤
-│ /start          → Boot terminal     │
-│ /clear          → Clear memory      │
-│ /help           → Topics list       │
-│ /commands       → Show this menu    │
-│ /roadmap <topic>→ Detailed roadmap  │
-│ /notes <topic>  → Study notes       │
+│ /start            → Boot terminal   │
+│ /clear            → Clear memory    │
+│ /help             → Topics list     │
+│ /commands         → This menu       │
+│ /roadmap <topic>  → Detailed roadmap│
+│ /notes <topic>    → Study notes     │
 │ /resources <topic>→ Free links      │
-│ /quiz <topic>   → Quiz question     │
-│ /explain <term> → Simple explanation│
+│ /quiz <topic>     → Quiz question   │
+│ /explain <term>   → Explanation     │
 └─────────────────────────────────────┘
 Examples:
   /roadmap LLMs
@@ -67,19 +66,31 @@ HELP_TEXT = """```
 ```"""
 
 
-def groq(messages: list) -> str:
+def groq_call(messages: list, max_tokens: int = 2048) -> str:
     r = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-        json={"model": "llama-3.3-70b-versatile", "messages": messages, "max_tokens": 2048},
+        json={"model": "llama-3.3-70b-versatile", "messages": messages, "max_tokens": max_tokens},
         timeout=60,
     )
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
 
-def ai(prompt: str) -> str:
-    return groq([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}])
+def ai(prompt: str, max_tokens: int = 2048) -> str:
+    return groq_call([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}], max_tokens)
+
+
+async def send_chunks(update: Update, chunks: list[str]):
+    """Send a list of strings as separate messages."""
+    for chunk in chunks:
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        try:
+            await update.message.reply_text(chunk, parse_mode="Markdown", disable_web_page_preview=True)
+        except Exception:
+            await update.message.reply_text(chunk, disable_web_page_preview=True)
 
 
 async def send(update: Update, text: str):
@@ -96,14 +107,14 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     sessions[update.effective_user.id] = []
-    await update.message.reply_text("```\n> Memory cleared. New session started.\n```", parse_mode="Markdown")
+    await update.message.reply_text("```\n> Memory cleared.\n```", parse_mode="Markdown")
 
 
 async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
 
 
-async def commands(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def commands_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(COMMANDS_TEXT, parse_mode="Markdown")
 
 
@@ -113,9 +124,32 @@ async def roadmap(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: `/roadmap <topic>`\nExample: `/roadmap LLMs`", parse_mode="Markdown")
         return
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ai(f"Create a very detailed step-by-step learning roadmap for: {topic}. "
-               f"Include phases, subtopics, estimated time, and resources for each phase.")
-    await send(update, f"🗺 *Roadmap: {topic}*\n\n{reply}")
+    await send(update, f"🗺 *Roadmap: {topic}* — generating...")
+
+    reply = ai(
+        f"Create a detailed learning roadmap for: {topic}.\n"
+        f"Format it as exactly 5 phases. Each phase must be separated by '---SPLIT---'.\n"
+        f"Each phase: Phase number, title, duration, topics to learn, and resources.",
+        max_tokens=3000
+    )
+
+    chunks = reply.split("---SPLIT---")
+    if len(chunks) <= 1:
+        # fallback: split by double newline sections
+        chunks = [c for c in reply.split("\n\n") if c.strip()]
+        # group into ~5 messages
+        grouped, current = [], ""
+        for c in chunks:
+            current += c + "\n\n"
+            if len(current) > 600:
+                grouped.append(current)
+                current = ""
+        if current:
+            grouped.append(current)
+        chunks = grouped
+
+    await send_chunks(update, [f"🗺 *Roadmap: {topic}*\n\n*Phase {i+1}:*\n{c}" for i, c in enumerate(chunks)])
+    await send(update, "✅ *Roadmap complete!* Use `/notes " + topic + "` for detailed study notes.")
 
 
 async def notes(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -124,15 +158,29 @@ async def notes(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: `/notes <topic>`\nExample: `/notes RAG`", parse_mode="Markdown")
         return
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ai(f"Create comprehensive study notes for: {topic}. "
-               f"Include: definition, key concepts, how it works, use cases, pros/cons, and code example if applicable.")
-    await send(update, f"📝 *Notes: {topic}*\n\n{reply}")
+    await send(update, f"📝 *Notes: {topic}* — generating...")
+
+    sections = [
+        ("📖 Definition", f"Give a clear, concise definition of {topic} in 3-5 sentences."),
+        ("⚙️ How It Works", f"Explain step by step how {topic} works technically."),
+        ("💡 Key Concepts", f"List the 5-7 most important concepts/components of {topic} with brief explanations."),
+        ("🛠 Use Cases", f"List 5 real-world use cases of {topic} with examples."),
+        ("💻 Code Example", f"Show a practical code example demonstrating {topic}. Use Python."),
+        ("✅ Summary", f"Give a 3-point summary of {topic} — what it is, why it matters, when to use it."),
+    ]
+
+    for title, prompt in sections:
+        await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        reply = ai(f"Topic: {topic}\nTask: {prompt}\nBe concise and clear.")
+        await send(update, f"{title}\n\n{reply}")
+
+    await send(update, f"✅ *Notes complete for {topic}!*")
 
 
 async def resources(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(ctx.args)
     if not topic:
-        await update.message.reply_text("Usage: `/resources <topic>`\nExample: `/resources Transformers`", parse_mode="Markdown")
+        await update.message.reply_text("Usage: `/resources <topic>`", parse_mode="Markdown")
         return
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply = ai(f"List the best free learning resources for: {topic}. "
@@ -143,18 +191,18 @@ async def resources(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def quiz(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(ctx.args) or "AI/ML"
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ai(f"Give me one challenging multiple choice quiz question about: {topic}. "
-               f"Format: Question, 4 options (A/B/C/D), then the correct answer with explanation.")
+    reply = ai(f"Give one challenging multiple choice quiz question about: {topic}. "
+               f"Format: Question, 4 options (A/B/C/D), correct answer with explanation.")
     await send(update, f"🧠 *Quiz: {topic}*\n\n{reply}")
 
 
 async def explain(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     term = " ".join(ctx.args)
     if not term:
-        await update.message.reply_text("Usage: `/explain <term>`\nExample: `/explain attention mechanism`", parse_mode="Markdown")
+        await update.message.reply_text("Usage: `/explain <term>`", parse_mode="Markdown")
         return
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ai(f"Explain '{term}' in simple terms (ELI5 style), then give a more technical explanation with an analogy and example.")
+    reply = ai(f"Explain '{term}': first in simple ELI5 terms, then technically with an analogy and code example.")
     await send(update, f"💡 *Explain: {term}*\n\n{reply}")
 
 
@@ -166,12 +214,12 @@ async def chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     sessions[user_id].append({"role": "user", "content": user_input})
     try:
-        reply = groq([{"role": "system", "content": SYSTEM_PROMPT}] + sessions[user_id])
+        reply = groq_call([{"role": "system", "content": SYSTEM_PROMPT}] + sessions[user_id])
         sessions[user_id].append({"role": "assistant", "content": reply})
         await send(update, f"> {user_input[:50]}{'...' if len(user_input) > 50 else ''}\n\n{reply}")
     except Exception as e:
         sessions[user_id].pop()
-        await update.message.reply_text(f"```\n[ERROR] {str(e)}\nTry /clear to reset.\n```", parse_mode="Markdown")
+        await update.message.reply_text(f"```\n[ERROR] {str(e)}\n```", parse_mode="Markdown")
 
 
 if __name__ == "__main__":
@@ -181,7 +229,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("clear", clear))
     app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("commands", commands))
+    app.add_handler(CommandHandler("commands", commands_cmd))
     app.add_handler(CommandHandler("roadmap", roadmap))
     app.add_handler(CommandHandler("notes", notes))
     app.add_handler(CommandHandler("resources", resources))
