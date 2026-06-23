@@ -95,8 +95,11 @@ async def chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         reply = ask_groq(sessions[user_id])
         sessions[user_id].append({"role": "assistant", "content": reply})
-        header = f"`> {user_input[:50]}{'...' if len(user_input) > 50 else ''}`\n\n"
-        await update.message.reply_text(header + reply, parse_mode="Markdown", disable_web_page_preview=True)
+        header = f"> {user_input[:50]}{'...' if len(user_input) > 50 else ''}\n\n"
+        try:
+            await update.message.reply_text(header + reply, parse_mode="Markdown", disable_web_page_preview=True)
+        except Exception:
+            await update.message.reply_text(header + reply, disable_web_page_preview=True)
     except Exception as e:
         sessions[user_id].pop()
         await update.message.reply_text(f"```\n[ERROR] {str(e)}\nTry /clear to reset.\n```", parse_mode="Markdown")
