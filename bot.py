@@ -1,4 +1,6 @@
 import os
+import time
+from collections import defaultdict, deque
 import requests
 from dotenv import load_dotenv
 from telegram import Update
@@ -8,64 +10,108 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-SYSTEM_PROMPT = (
-    "You are an expert AI assistant specialized exclusively in Artificial Intelligence, "
-    "Machine Learning, Deep Learning, LLMs, Agents, RAG, MCP, Vector Databases, Prompt Engineering, "
-    "MLOps, and all related AI/ML topics.\n\n"
-    "Rules:\n"
-    "- Only answer AI-related questions. For anything else say: "
-    "'⚠ This terminal only handles AI queries.'\n"
-    "- Structure responses clearly with sections and bullet points.\n"
-    "- Include code examples where relevant."
-)
+# ── Rate limiter: max 10 messages per 60 seconds per user ──────────────────
+RATE_LIMIT = 10
+RATE_WINDOW = 60
+user_timestamps: dict[int, deque] = defaultdict(deque)
+
+def is_rate_limited(user_id: int) -> tuple[bool, int]:
+    now = time.time()
+    timestamps = user_timestamps[user_id]
+    while timestamps and now - timestamps[0] > RATE_WINDOW:
+        timestamps.popleft()
+    if len(timestamps) >= RATE_LIMIT:
+        wait = int(RATE_WINDOW - (now - timestamps[0])) + 1
+        return True, wait
+    timestamps.append(now)
+    return False, 0
+
+# ── System prompt ───────────────────────────────────────────────────────────
+SYSTEM_PROMPT = """You are an expert AI/ML engineer and system design architect.
+You specialize in: LLMs, RAG, AI Agents, MCP, Vector DBs, Prompt Engineering,
+MLOps, System Design, Backend Architecture, API Design, Distributed Systems,
+Database Design, Microservices, Cloud Architecture, and all AI/ML topics.
+
+Rules:
+- Only answer AI, ML, system design, and backend engineering topics.
+- For anything else say: '⚠️ Out of scope. Ask me about AI, system design, or backend engineering.'
+- Always include working code examples when relevant.
+- Format code in proper markdown code blocks with language specified.
+- Be precise and production-focused."""
 
 sessions: dict[int, list] = {}
 
+# ── VS Code style UI strings ────────────────────────────────────────────────
 BANNER = """```
-╔══════════════════════════════════════╗
-║         AI TERMINAL v1.0             ║
-║   Powered by Groq • DhavalCoder      ║
-╚══════════════════════════════════════╝
-> Ready. Ask me anything about AI.
-> Type /commands to see all commands.
+╔═══════════════════════════════════════════╗
+║  ▸ AI TERMINAL  v2.0                      ║
+║  ▸ Model  : Llama 3.3 70B via Groq        ║
+║  ▸ Topics : AI · ML · System Design       ║
+╠═══════════════════════════════════════════╣
+║  Type /commands to see all commands       ║
+║  Type any question to start chatting      ║
+╚═══════════════════════════════════════════╝
 ```"""
 
 COMMANDS_TEXT = """```
-┌─────────────────────────────────────┐
-│           ALL COMMANDS              │
-├─────────────────────────────────────┤
-│ /start            → Boot terminal   │
-│ /clear            → Clear memory    │
-│ /help             → Topics list     │
-│ /commands         → This menu       │
-│ /roadmap <topic>  → Detailed roadmap│
-│ /notes <topic>    → Study notes     │
-│ /resources <topic>→ Free links      │
-│ /quiz <topic>     → Quiz question   │
-│ /explain <term>   → Explanation     │
-└─────────────────────────────────────┘
-Examples:
-  /roadmap LLMs
-  /notes RAG
-  /resources Prompt Engineering
-  /quiz Transformers
-  /explain attention mechanism
+ AI TERMINAL — COMMAND PALETTE
+ ───────────────────────────────────────────
+  /start              Boot terminal
+  /clear              Clear memory
+  /help               Show topics
+  /commands           This menu
+
+ ── LEARNING ──────────────────────────────
+  /roadmap  <topic>   Step-by-step roadmap
+  /notes    <topic>   Structured study notes
+  /explain  <term>    Simple explanation
+  /quiz     <topic>   MCQ quiz question
+  /cheatsheet <topic> Quick reference card
+
+ ── BUILDING ──────────────────────────────
+  /stack    <usecase> Recommended tech stack
+  /architecture <sys> System design blueprint
+  /integrate <tool>   Integration guide
+  /deploy   <model>   Deployment guide
+
+ ── RESOURCES ─────────────────────────────
+  /resources <topic>  Free links & papers
+  /compare  <A vs B>  Side-by-side comparison
+  /interview <topic>  Interview Q&A
+
+ ───────────────────────────────────────────
+  Examples:
+    /stack    rag chatbot
+    /notes    transformer architecture
+    /compare  RAG vs fine-tuning
+    /architecture ai agent system
 ```"""
 
 HELP_TEXT = """```
-┌─────────────────────────────────────┐
-│           AI TOPICS                 │
-├─────────────────────────────────────┤
-│  LLMs · GPT · Claude · Gemini       │
-│  RAG · Vector DBs · Embeddings      │
-│  AI Agents · MCP · LangChain        │
-│  Prompt Engineering · Fine-tuning   │
-│  LoRA · PEFT · MLOps · Inference    │
-│  Computer Vision · NLP · RL         │
-└─────────────────────────────────────┘
+ SUPPORTED TOPICS
+ ───────────────────────────────────────────
+  AI / ML
+    LLMs · GPT · Claude · Gemini · Llama
+    RAG · Vector DBs · Embeddings
+    AI Agents · MCP · LangChain · LlamaIndex
+    Prompt Engineering · Fine-tuning
+    LoRA · PEFT · MLOps · Inference
+
+  SYSTEM DESIGN
+    Distributed Systems · Microservices
+    API Design · Database Design
+    Caching · Message Queues · Load Balancing
+    Cloud Architecture · Scalability
+
+  BACKEND ENGINEERING
+    FastAPI · Node.js · Databases
+    Authentication · Rate Limiting
+    Deployment · Docker · Kubernetes
+ ───────────────────────────────────────────
 ```"""
 
 
+# ── Groq API call ────────────────────────────────────────────────────────────
 def groq_call(messages: list, max_tokens: int = 2048) -> str:
     r = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
@@ -78,19 +124,8 @@ def groq_call(messages: list, max_tokens: int = 2048) -> str:
 
 
 def ai(prompt: str, max_tokens: int = 2048) -> str:
-    return groq_call([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}], max_tokens)
-
-
-async def send_chunks(update: Update, chunks: list[str]):
-    """Send a list of strings as separate messages."""
-    for chunk in chunks:
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        try:
-            await update.message.reply_text(chunk, parse_mode="Markdown", disable_web_page_preview=True)
-        except Exception:
-            await update.message.reply_text(chunk, disable_web_page_preview=True)
+    return groq_call([{"role": "system", "content": SYSTEM_PROMPT},
+                      {"role": "user", "content": prompt}], max_tokens)
 
 
 async def send(update: Update, text: str):
@@ -100,6 +135,17 @@ async def send(update: Update, text: str):
         await update.message.reply_text(text, disable_web_page_preview=True)
 
 
+async def check_limit(update: Update) -> bool:
+    limited, wait = is_rate_limited(update.effective_user.id)
+    if limited:
+        await update.message.reply_text(
+            f"```\n⏳ Rate limit reached.\n   Try again in {wait}s (max {RATE_LIMIT} msgs/min)\n```",
+            parse_mode="Markdown"
+        )
+    return limited
+
+
+# ── Command handlers ─────────────────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     sessions[update.effective_user.id] = []
     await update.message.reply_text(BANNER, parse_mode="Markdown")
@@ -107,7 +153,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def clear(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     sessions[update.effective_user.id] = []
-    await update.message.reply_text("```\n> Memory cleared.\n```", parse_mode="Markdown")
+    await update.message.reply_text("```\n✓ Memory cleared — new session started\n```", parse_mode="Markdown")
 
 
 async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -119,94 +165,165 @@ async def commands_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def roadmap(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
     topic = " ".join(ctx.args)
     if not topic:
-        await update.message.reply_text("Usage: `/roadmap <topic>`\nExample: `/roadmap LLMs`", parse_mode="Markdown")
+        await send(update, "Usage: `/roadmap <topic>`  →  e.g. `/roadmap LLMs`")
         return
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    await send(update, f"🗺 *Roadmap: {topic}* — generating...")
-
+    await send(update, f"```\n▸ Generating roadmap: {topic}\n```")
     reply = ai(
-        f"Create a detailed learning roadmap for: {topic}.\n"
-        f"Format it as exactly 5 phases. Each phase must be separated by '---SPLIT---'.\n"
-        f"Each phase: Phase number, title, duration, topics to learn, and resources.",
+        f"Create a detailed 5-phase learning roadmap for: {topic}.\n"
+        f"Separate each phase with exactly '---PHASE---'.\n"
+        f"Each phase: title, duration, topics, resources, milestone.",
         max_tokens=3000
     )
-
-    chunks = reply.split("---SPLIT---")
-    if len(chunks) <= 1:
-        # fallback: split by double newline sections
-        chunks = [c for c in reply.split("\n\n") if c.strip()]
-        # group into ~5 messages
-        grouped, current = [], ""
-        for c in chunks:
-            current += c + "\n\n"
-            if len(current) > 600:
-                grouped.append(current)
-                current = ""
-        if current:
-            grouped.append(current)
-        chunks = grouped
-
-    await send_chunks(update, [f"🗺 *Roadmap: {topic}*\n\n*Phase {i+1}:*\n{c}" for i, c in enumerate(chunks)])
-    await send(update, "✅ *Roadmap complete!* Use `/notes " + topic + "` for detailed study notes.")
+    phases = [p.strip() for p in reply.split("---PHASE---") if p.strip()]
+    if len(phases) <= 1:
+        await send(update, f"🗺 *Roadmap: {topic}*\n\n{reply}")
+        return
+    for i, phase in enumerate(phases, 1):
+        await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        await send(update, f"🗺 *Phase {i}/{len(phases)} — {topic}*\n\n{phase}")
+    await send(update, f"```\n✓ Roadmap complete for: {topic}\n  Next: /notes {topic}\n```")
 
 
 async def notes(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
     topic = " ".join(ctx.args)
     if not topic:
-        await update.message.reply_text("Usage: `/notes <topic>`\nExample: `/notes RAG`", parse_mode="Markdown")
+        await send(update, "Usage: `/notes <topic>`  →  e.g. `/notes RAG`")
         return
-    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    await send(update, f"📝 *Notes: {topic}* — generating...")
-
+    await send(update, f"```\n▸ Generating notes: {topic}\n```")
     sections = [
-        ("📖 1/6 — Definition", f"Define '{topic}' in 3-5 sentences only."),
-        ("⚙️ 2/6 — How It Works", f"Explain step by step how '{topic}' works technically. Be concise."),
-        ("💡 3/6 — Key Concepts", f"List 5-7 key concepts of '{topic}' with one-line explanations each."),
-        ("🛠 4/6 — Use Cases", f"List 5 real-world use cases of '{topic}' with brief examples."),
-        ("💻 5/6 — Code Example", f"Show one practical Python code example for '{topic}' with short comments."),
-        ("✅ 6/6 — Summary", f"3 bullet points only: what '{topic}' is, why it matters, when to use it."),
+        ("📖 1/6 — Definition",   f"Define '{topic}' clearly in 4-5 sentences."),
+        ("⚙️ 2/6 — How It Works", f"Explain step-by-step how '{topic}' works technically."),
+        ("💡 3/6 — Key Concepts", f"List 5-7 key concepts of '{topic}' with one-line explanations."),
+        ("🛠 4/6 — Use Cases",    f"List 5 real-world use cases of '{topic}' with examples."),
+        ("💻 5/6 — Code Example", f"Write one practical Python code example for '{topic}' with inline comments."),
+        ("✅ 6/6 — Summary",      f"Summarize '{topic}' in exactly 3 bullet points: what, why, when."),
     ]
-
     for title, prompt in sections:
         await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         reply = ai(prompt)
         await send(update, f"*{title}*\n\n{reply}")
+    await send(update, f"```\n✓ Notes complete: {topic}\n```")
 
-    await send(update, f"✅ *Notes complete for {topic}!*")
+
+async def stack(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
+    usecase = " ".join(ctx.args)
+    if not usecase:
+        await send(update, "Usage: `/stack <use case>`  →  e.g. `/stack rag chatbot`")
+        return
+    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    reply = ai(
+        f"Recommend the best production tech stack for: {usecase}.\n"
+        f"Include: LLM/model choice, vector DB, backend framework, frontend, deployment, monitoring.\n"
+        f"For each component explain WHY it's chosen over alternatives.\n"
+        f"End with a simple architecture diagram using ASCII art."
+    )
+    await send(update, f"🛠 *Stack: {usecase}*\n\n{reply}")
+
+
+async def architecture(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
+    system = " ".join(ctx.args)
+    if not system:
+        await send(update, "Usage: `/architecture <system>`  →  e.g. `/architecture ai agent`")
+        return
+    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    reply = ai(
+        f"Design a production-grade system architecture for: {system}.\n"
+        f"Include: components, data flow, scalability considerations, failure points, and an ASCII diagram."
+    )
+    await send(update, f"🏗 *Architecture: {system}*\n\n{reply}")
+
+
+async def compare(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
+    topic = " ".join(ctx.args)
+    if not topic:
+        await send(update, "Usage: `/compare <A vs B>`  →  e.g. `/compare RAG vs fine-tuning`")
+        return
+    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    reply = ai(f"Compare {topic}. Use a structured table + pros/cons + when to use each.")
+    await send(update, f"⚖️ *Compare: {topic}*\n\n{reply}")
+
+
+async def integrate(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
+    tool = " ".join(ctx.args)
+    if not tool:
+        await send(update, "Usage: `/integrate <tool>`  →  e.g. `/integrate openai fastapi`")
+        return
+    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    reply = ai(f"Show a complete step-by-step guide with working code to integrate: {tool}.")
+    await send(update, f"🔌 *Integrate: {tool}*\n\n{reply}")
+
+
+async def deploy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
+    model = " ".join(ctx.args)
+    if not model:
+        await send(update, "Usage: `/deploy <model>`  →  e.g. `/deploy llama`")
+        return
+    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    reply = ai(f"Step-by-step production deployment guide for: {model}. Include code, configs, and cost estimate.")
+    await send(update, f"🚀 *Deploy: {model}*\n\n{reply}")
+
+
+async def interview(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
+    topic = " ".join(ctx.args) or "AI/ML"
+    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    reply = ai(f"Generate 10 real interview questions about {topic} with detailed answers. Mix conceptual and coding.")
+    await send(update, f"🎯 *Interview: {topic}*\n\n{reply}")
 
 
 async def resources(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
     topic = " ".join(ctx.args)
     if not topic:
-        await update.message.reply_text("Usage: `/resources <topic>`", parse_mode="Markdown")
+        await send(update, "Usage: `/resources <topic>`")
         return
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ai(f"List the best free learning resources for: {topic}. "
-               f"Include papers, YouTube channels, GitHub repos, courses, and websites with URLs.")
+    reply = ai(f"List the best free resources for: {topic}. Include papers, GitHub repos, courses, YouTube, docs.")
     await send(update, f"🔗 *Resources: {topic}*\n\n{reply}")
 
 
 async def quiz(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
     topic = " ".join(ctx.args) or "AI/ML"
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ai(f"Give one challenging multiple choice quiz question about: {topic}. "
-               f"Format: Question, 4 options (A/B/C/D), correct answer with explanation.")
+    reply = ai(f"One challenging MCQ about {topic}. Format: question, A/B/C/D options, answer + explanation.")
     await send(update, f"🧠 *Quiz: {topic}*\n\n{reply}")
 
 
 async def explain(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
     term = " ".join(ctx.args)
     if not term:
-        await update.message.reply_text("Usage: `/explain <term>`", parse_mode="Markdown")
+        await send(update, "Usage: `/explain <term>`  →  e.g. `/explain attention mechanism`")
         return
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ai(f"Explain '{term}': first in simple ELI5 terms, then technically with an analogy and code example.")
+    reply = ai(f"Explain '{term}': 1) ELI5, 2) technical explanation, 3) analogy, 4) code example.")
     await send(update, f"💡 *Explain: {term}*\n\n{reply}")
 
 
+async def cheatsheet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
+    topic = " ".join(ctx.args)
+    if not topic:
+        await send(update, "Usage: `/cheatsheet <topic>`  →  e.g. `/cheatsheet transformers`")
+        return
+    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    reply = ai(f"Create a concise cheat sheet for {topic}. Key formulas, commands, patterns, and gotchas.")
+    await send(update, f"📋 *Cheatsheet: {topic}*\n\n{reply}")
+
+
 async def chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if await check_limit(update): return
     user_id = update.effective_user.id
     user_input = update.message.text.strip()
     if user_id not in sessions:
@@ -216,25 +333,26 @@ async def chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         reply = groq_call([{"role": "system", "content": SYSTEM_PROMPT}] + sessions[user_id])
         sessions[user_id].append({"role": "assistant", "content": reply})
-        await send(update, f"> {user_input[:50]}{'...' if len(user_input) > 50 else ''}\n\n{reply}")
+        preview = user_input[:45] + ("..." if len(user_input) > 45 else "")
+        await send(update, f"```\n▸ {preview}\n```\n\n{reply}")
     except Exception as e:
         sessions[user_id].pop()
-        await update.message.reply_text(f"```\n[ERROR] {str(e)}\n```", parse_mode="Markdown")
+        await update.message.reply_text(f"```\n✗ ERROR: {str(e)}\n  Try /clear to reset.\n```", parse_mode="Markdown")
 
 
 if __name__ == "__main__":
     if not BOT_TOKEN or not GROQ_API_KEY:
         raise ValueError("BOT_TOKEN or GROQ_API_KEY not set")
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("clear", clear))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("commands", commands_cmd))
-    app.add_handler(CommandHandler("roadmap", roadmap))
-    app.add_handler(CommandHandler("notes", notes))
-    app.add_handler(CommandHandler("resources", resources))
-    app.add_handler(CommandHandler("quiz", quiz))
-    app.add_handler(CommandHandler("explain", explain))
+    for cmd, handler in [
+        ("start", start), ("clear", clear), ("help", help_cmd),
+        ("commands", commands_cmd), ("roadmap", roadmap), ("notes", notes),
+        ("stack", stack), ("architecture", architecture), ("compare", compare),
+        ("integrate", integrate), ("deploy", deploy), ("interview", interview),
+        ("resources", resources), ("quiz", quiz), ("explain", explain),
+        ("cheatsheet", cheatsheet),
+    ]:
+        app.add_handler(CommandHandler(cmd, handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-    print("AI Terminal Bot running...")
+    print("AI Terminal Bot v2.0 running...")
     app.run_polling()
