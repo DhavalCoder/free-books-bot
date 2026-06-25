@@ -3,8 +3,8 @@ import time
 from collections import defaultdict, deque
 import requests
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -129,10 +129,11 @@ def ai(prompt: str, max_tokens: int = 2048) -> str:
 
 
 async def send(update: Update, text: str):
+    msg = update.message or update.callback_query.message
     try:
-        await update.message.reply_text(text, parse_mode="Markdown", disable_web_page_preview=True)
+        await msg.reply_text(text, parse_mode="Markdown", disable_web_page_preview=True)
     except Exception:
-        await update.message.reply_text(text, disable_web_page_preview=True)
+        await msg.reply_text(text, disable_web_page_preview=True)
 
 
 async def check_limit(update: Update) -> bool:
@@ -328,16 +329,84 @@ async def chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     if user_id not in sessions:
         sessions[user_id] = []
+
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+    # Step 1: short intro (max 120 tokens)
     sessions[user_id].append({"role": "user", "content": user_input})
     try:
-        reply = groq_call([{"role": "system", "content": SYSTEM_PROMPT}] + sessions[user_id])
-        sessions[user_id].append({"role": "assistant", "content": reply})
+        intro = groq_call(
+            [{"role": "system", "content": SYSTEM_PROMPT + "\nGive a SHORT 2-3 sentence intro only. No code. No lists."}]
+            + sessions[user_id],
+            max_tokens=120,
+        )
+        sessions[user_id].append({"role": "assistant", "content": intro})
+
+        # store topic for deep-dive buttons
+        ctx.user_data["last_topic"] = user_input
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📖 Learn More", callback_data=f"more|{user_input[:80]}"),
+                InlineKeyboardButton("💻 Show Code", callback_data=f"code|{user_input[:80]}"),
+            ],
+            [
+                InlineKeyboardButton("🗺 Roadmap", callback_data=f"roadmap_btn|{user_input[:80]}"),
+                InlineKeyboardButton("📝 Full Notes", callback_data=f"notes_btn|{user_input[:80]}"),
+            ],
+        ])
+
         preview = user_input[:45] + ("..." if len(user_input) > 45 else "")
-        await send(update, f"```\n▸ {preview}\n```\n\n{reply}")
+        await update.message.reply_text(
+            f"```\n▸ {preview}\n```\n\n{intro}",
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
     except Exception as e:
         sessions[user_id].pop()
         await update.message.reply_text(f"```\n✗ ERROR: {str(e)}\n  Try /clear to reset.\n```", parse_mode="Markdown")
+
+
+async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    action, topic = query.data.split("|", 1)
+    await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+    if action == "more":
+        reply = ai(f"Give a detailed explanation of: {topic}. Include key concepts, how it works, and examples.")
+        await send(update, f"📖 *Deep Dive: {topic}*\n\n{reply}")
+
+    elif action == "code":
+        reply = ai(f"Show a complete, practical Python code example for: {topic}. With comments explaining each part.")
+        await send(update, f"💻 *Code: {topic}*\n\n{reply}")
+
+    elif action == "roadmap_btn":
+        reply = ai(
+            f"Create a 5-phase learning roadmap for: {topic}. "
+            f"Separate phases with '---PHASE---'. Each phase: title, duration, topics, resources.",
+            max_tokens=2500,
+        )
+        phases = [p.strip() for p in reply.split("---PHASE---") if p.strip()]
+        if len(phases) <= 1:
+            await send(update, f"🗺 *Roadmap: {topic}*\n\n{reply}")
+        else:
+            for i, phase in enumerate(phases, 1):
+                await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+                await send(update, f"🗺 *Phase {i}/{len(phases)}*\n\n{phase}")
+
+    elif action == "notes_btn":
+        sections = [
+            ("📖 1/4 — What & Why", f"What is '{topic}' and why does it matter? 4 sentences."),
+            ("⚙️ 2/4 — How It Works", f"How does '{topic}' work? Step by step."),
+            ("💻 3/4 — Code Example", f"Practical Python code example for '{topic}' with comments."),
+            ("✅ 4/4 — Summary", f"3 bullet summary of '{topic}': what, why, when to use."),
+        ]
+        for title, prompt in sections:
+            await ctx.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+            reply = ai(prompt)
+            await send(update, f"*{title}*\n\n{reply}")
 
 
 if __name__ == "__main__":
@@ -354,5 +423,6 @@ if __name__ == "__main__":
     ]:
         app.add_handler(CommandHandler(cmd, handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+    app.add_handler(CallbackQueryHandler(button_callback))
     print("AI Terminal Bot v2.0 running...")
     app.run_polling()
